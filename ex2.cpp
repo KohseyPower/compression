@@ -70,27 +70,19 @@ void my_codeurDPCM_with_loop(unsigned char **x, int **err, int H, int W, int ste
     
     for(i = 0; i < H; i++) {
         for(j = 0; j < W; j++) {
-            // Prédiction DPCM par ligne : le pixel courant est prédit par le précédent
             if(j == 0) {
-                // Pas de pixel précédent à gauche pour la première colonne
                 pred = 128; 
             } else {
-                // Boucle de rétroaction : on utilise le pixel RECONSTRUIT précédent
                 pred = rec; 
             }
             
-            // Calcul de l'erreur de prédiction
             error = (int)x[i][j] - pred;
             
-            // Quantification de l'erreur avec la fonction fournie
-            // On suppose que quantiz retourne la valeur quantifiée/déquantifiée
             q_error = quantiz(error, step);
             err[i][j] = q_error;
             
-            // Étape de reconstruction locale (ce que fera le décodeur)
             rec = pred + q_error;
             
-            // Saturation des valeurs pour rester dans l'espace colorimétrique [0, 255]
             if(rec < 0) rec = 0;
             if(rec > 255) rec = 255;
         }
@@ -105,22 +97,17 @@ void my_codeurDPCM_without_loop(unsigned char **x, int **err, int H, int W, int 
     
     for(i = 0; i < H; i++) {
         for(j = 0; j < W; j++) {
-            // Prédiction DPCM par ligne SANS boucle
             if(j == 0) {
                 pred = 128; 
             } else {
-                // On utilise le VRAI pixel précédent de l'image originale
                 pred = (int)x[i][j-1]; 
             }
             
-            // Calcul de l'erreur de prédiction
             error = (int)x[i][j] - pred;
             
-            // Quantification de l'erreur
             q_error = quantiz(error, step);
             err[i][j] = q_error;
             
-            // On n'a plus besoin de calculer "rec" ici puisqu'on ne s'en sert pas !
         }
     }
 }
@@ -133,56 +120,44 @@ void my_decodeurDPCM(int **err, unsigned char **xrec, int H, int W)
     
     for(i = 0; i < H; i++) {
         for(j = 0; j < W; j++) {
-            // La logique de prédiction doit être strictement identique à celle du codeur
             if(j == 0) {
                 pred = 128; 
             } else {
                 pred = rec; 
             }
             
-            // Reconstruction du pixel à partir de la prédiction et de l'erreur quantifiée
             rec = pred + err[i][j];
             
-            // Saturation
             if(rec < 0) rec = 0;
             if(rec > 255) rec = 255;
             
-            // Stockage dans l'image finale
             xrec[i][j] = (unsigned char)rec;
         }
     }
 }
 
+// Q2
 void my_codeur_adapt(unsigned char **x, int **err, int H, int W, int step)
 {
     int i, j;
     int A, B, C, pred, error, q_error, rec;
     
-    // Allocation locale d'une matrice pour stocker l'image reconstruite au fur et à mesure
-    // C'est indispensable pour la boucle de rétroaction afin d'avoir accès à la ligne précédente
     unsigned char **xrec_local = alocamuc(H, W);
 
     for(i = 0; i < H; i++) {
         for(j = 0; j < W; j++) {
             
-            // --- GESTION DES BORDS ---
             if (i == 0 && j == 0) {
-                // Tout premier pixel (en haut à gauche) : aucun voisin
                 pred = 128;
             } else if (i == 0) {
-                // Première ligne : B et C n'existent pas, on utilise la prédiction 1D par ligne (A)
                 pred = xrec_local[i][j-1];
             } else if (j == 0) {
-                // Première colonne : A et B n'existent pas, on utilise le voisin du haut (C)
                 pred = xrec_local[i-1][j];
             } else {
-                // --- CAS GÉNÉRAL : PRÉDICTION ADAPTATIVE ---
-                // On récupère les voisins RECONSTRUITS
                 A = xrec_local[i][j-1];
                 C = xrec_local[i-1][j];
                 B = xrec_local[i-1][j-1];
 
-                // Application de la formule : si |B-C| <= |B-A| alors pred = A, sinon C
                 if (abs(B - C) <= abs(B - A)) {
                     pred = A;
                 } else {
@@ -190,17 +165,13 @@ void my_codeur_adapt(unsigned char **x, int **err, int H, int W, int step)
                 }
             }
 
-            // Calcul de l'erreur de prédiction
             error = (int)x[i][j] - pred;
 
-            // Quantification de l'erreur
             q_error = quantiz(error, step);
             err[i][j] = q_error;
 
-            // Reconstruction locale pour les prochaines prédictions
             rec = pred + q_error;
             
-            // Saturation
             if (rec < 0) rec = 0;
             if (rec > 255) rec = 255;
             
@@ -208,21 +179,18 @@ void my_codeur_adapt(unsigned char **x, int **err, int H, int W, int step)
         }
     }
 
-    // Libération de la mémoire allouée localement
     dalocuc(xrec_local, H);
 }
 
-
+// Q2
 void my_decodeur_adapt(int **err, unsigned char **xrec, int H, int W)
 {
     int i, j;
     int A, B, C, pred, rec;
 
-    // L'ordre de parcours de l'image est de type raster-scan
     for(i = 0; i < H; i++) {
         for(j = 0; j < W; j++) {
             
-            // --- La gestion des bords DOIT être identique à celle du codeur ---
             if (i == 0 && j == 0) {
                 pred = 128;
             } else if (i == 0) {
@@ -230,12 +198,10 @@ void my_decodeur_adapt(int **err, unsigned char **xrec, int H, int W)
             } else if (j == 0) {
                 pred = xrec[i-1][j];
             } else {
-                // Récupération des voisins (déjà reconstruits car raster-scan)
                 A = xrec[i][j-1];
                 C = xrec[i-1][j];
                 B = xrec[i-1][j-1];
 
-                // Formule adaptative
                 if (abs(B - C) <= abs(B - A)) {
                     pred = A;
                 } else {
@@ -243,10 +209,8 @@ void my_decodeur_adapt(int **err, unsigned char **xrec, int H, int W)
                 }
             }
 
-            // Reconstruction du pixel
             rec = pred + err[i][j];
 
-            // Saturation
             if (rec < 0) rec = 0;
             if (rec > 255) rec = 255;
             
@@ -254,6 +218,21 @@ void my_decodeur_adapt(int **err, unsigned char **xrec, int H, int W)
         }
     }
 }
+
+// Q5 test
+// Matrice de quantification pour la DCT 8x8 (Figure 2)
+int Q8[8][8] = {
+    {8,  17, 18, 19, 21, 23, 25, 27},
+    {17, 18, 19, 21, 23, 25, 27, 28},
+    {20, 21, 22, 23, 24, 26, 28, 30},
+    {21, 22, 23, 24, 26, 28, 30, 32},
+    {22, 23, 24, 26, 28, 30, 32, 35},
+    {23, 24, 26, 28, 30, 32, 35, 38},
+    {25, 26, 28, 30, 32, 35, 38, 41},
+    {27, 28, 30, 32, 35, 38, 41, 45}
+};
+
+// Fonction pour la DCT par blocs 8x8 avec Quantification Variable
 
 int main (int argc, char *argv[])
 { 
@@ -290,7 +269,7 @@ int main (int argc, char *argv[])
 
 
   
-   /*
+   
   // CODE DCT
   double **tdct = alocamd(H, W); // image transformee
   double **xd = alocamd(H, W);   // image initiale en double
@@ -337,31 +316,38 @@ int main (int argc, char *argv[])
   dalocd(xd,H);
   dalocd(tdct,H);
   
+  
 
   //FIN CODE DCT
-  */
 
 // DCT PAR BLOCS
-/*
-double **tdct = alocamd(H, W); // image transformee
-double **xd = alocamd(H, W);   // image initiale en double
-double **xrecd = alocamd(H, W); // image reconstruite
+tdct = alocamd(H, W); // image transformee
+xd = alocamd(H, W);   // image initiale en double
+xrecd = alocamd(H, W); // image reconstruite
 
   for(i=0;i<H;i++)
     for(j=0;j<W;j++)
       xd[i][j] = (double)x[i][j]; 
 
 
+int Bx=8, By=8;
 
-int Bx=64, By=64; 
+ dct2dim_bloc(xd, tdct, H, W, Bx, By, step); 
 
-dct2dim_bloc(xd, tdct, H, W, Bx, By, step); 
+for(i=0;i<H;i++) 
 
-for(i=0;i<H;i++)
+
   for(j=0;j<W;j++)
-    err[i][j] = (int)tdct[i][j];
 
-double entro = calc_entropie(err, H, W); 
+
+   double pas = step ; // fixe
+
+    double pas = Q8[i%8][j%8] * ((float)step/8); // variable
+
+    err[i][j] = quantiz((int)tdct[i][j], pas);
+
+
+entro = calc_entropie(err, H, W); 
 fprintf(stderr, "\nentropie = %g [bits/pixel]\n", entro);
 
 dct2dim_bloc_inv(tdct, xrecd, H, W, Bx, By); 
@@ -374,10 +360,9 @@ for(i=0;i<H;i++)
 
   SaveIntImage_pgm_tronc(nom_err, err, H, W); 
   ecriture_pgm(nom_out, xrec, W, H);
-   dalocd(xrecd,H);
+  dalocd(xrecd,H);
   dalocd(xd,H);
   dalocd(tdct,H);
-*/
 
 
 // FIN DCT PAR BLOCS
@@ -388,25 +373,28 @@ for(i=0;i<H;i++)
 
 //PREDICTION
   
-  codeur_adapt(x, err, H, W, step);
-  decodeur_adapt(err, xrec, H, W); 
+  //codeur_adapt(x, err, H, W, step);
+  //decodeur_adapt(err, xrec, H, W); 
   
    //  codeur_adapt(x, err, H, W, step);  
    //    decodeur_adapt(err, xrec, H, W);  
+//    my_codeur_adapt(x, err, H, W, step);
+//    my_decodeur_adapt(err, xrec, H, W);
+
    
   
-   double entro = calc_entropie(err, H, W); 
-   fprintf(stderr, "\nentropie = %g [bits/pixel]\n", entro);
-  SaveIntImage_pgm(nom_err, err, H, W); 
+//    double entro = calc_entropie(err, H, W); 
+//    fprintf(stderr, "\nentropie = %g [bits/pixel]\n", entro);
+//   SaveIntImage_pgm(nom_err, err, H, W); 
   
 
-  ecriture_pgm(nom_out, xrec, W, H);
+//   ecriture_pgm(nom_out, xrec, W, H);
   
-//FIN PREDICTION
+// //FIN PREDICTION
    
-   dalocuc(x,H);
-   dalocuc(xrec,H);
-  daloci(err,H);
+//    dalocuc(x,H);
+//    dalocuc(xrec,H);
+//   daloci(err,H);
 
   return 1; 
 }
